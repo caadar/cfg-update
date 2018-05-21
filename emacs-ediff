@@ -1,0 +1,82 @@
+#!/bin/env bash
+
+# Credits:
+# -------
+# http://stackoverflow.com/questions/1817370/using-ediff-as-git-mergetool/4512729#4512729
+# https://www.mercurial-scm.org/wiki/MergingWithEmacs
+
+
+set -e
+
+_prepare_parameters()
+{
+	_number_of_positional_arguments=$#
+	_current=$(readlink -f "$1")
+	_updated=$(readlink -f "$2")
+	if  [[ -e "$3" ]]
+	then
+		_merged=$(readlink -f "$3")
+	else
+		_merged="$3"
+	fi
+
+	if  [[ "${_number_of_positional_arguments}" -eq 4 ]]
+	then
+		_previous=$(readlink -f "$4")
+	fi
+}
+
+_two-merge()
+{
+	emacsclient -c -a "" -e "(ediff-merge-files \"${_current}\" \"${_updated}\" nil \"${_merged}\")" &>/dev/null
+}
+
+_tree-merge()
+{
+	emacsclient -c -a "" -e "(ediff-merge-files-with-ancestor \"${_current}\" \"${_updated}\" \"${_merged}\" nil \"${_previous}\")" &>/dev/null
+}
+
+_help()
+{
+	echo 1>&2 "Usage: ${0} CURRENT UPDATED MERGED [PREVIOUS]"
+	exit 1
+}
+
+_select_merge()
+{
+	case "$_number_of_positional_arguments" in
+		3) _two-merge
+		   ;;
+		4) _tree-merge
+		   ;;
+		*) _help
+		   ;;
+	esac
+}
+
+_check_merged()
+{
+	local _conflict_count
+	local _mergedsave
+	_conflict_count=$(egrep -c '^(<<<<<<<|=======|>>>>>>>|####### Ancestor)' "${_merged}" &>/dev/null)
+	if  [ ! "${_conflict_count}" = 0 ]
+	then
+		_mergedsave=$( mktemp --tmpdir "$( basename "${_merged}" ).XXXXXXXXXX" )
+		mv -f "${_merged}" "${_mergedsave}" &>/dev/null
+		echo 1>&2
+		echo 1>&2 "Oops! Conflict markers detected in ${_merged}"
+		echo 1>&2 "Saved your changes to ${_mergedsave}"
+		echo 1>&2 "Exiting with code 1"
+		echo 1>&2
+		exit 1
+	fi
+}
+
+
+#####
+
+_prepare_parameters "$@"
+_select_merge
+_check_merged
+
+exit 0
